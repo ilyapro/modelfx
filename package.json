@@ -1,12 +1,8 @@
 {
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "MIT",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
-  "files": [
-    "dist",
-    "src"
-  ],
   "engines": {
     "node": ">=10"
   },
@@ -19,21 +15,13 @@
     "size": "size-limit",
     "analyze": "size-limit --why"
   },
-  "peerDependencies": {},
-  "husky": {
-    "hooks": {
-      "pre-commit": "tsdx lint"
-    }
-  },
-  "prettier": {
-    "printWidth": 80,
-    "semi": true,
-    "singleQuote": true,
-    "trailingComma": "es5"
-  },
   "name": "modelfx",
   "author": "Ilya Prokopchuk",
-  "module": "dist/modelfx.esm.js",
+  "email": "ilya.prokopchuk@gmail.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ilyapro/modelfx"
+  },
   "size-limit": [
     {
       "path": "dist/modelfx.cjs.production.min.js",

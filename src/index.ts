@@ -1,1 +1,10 @@
-export { createModel, createModelContext } from './model';
+export {
+  createModel,
+  createModelContext,
+  Model,
+  ModelSelection,
+  ModelInstance,
+  ModelState,
+  ModelDispatch,
+  ModelContextApi as ModelContext,
+} from './model';
