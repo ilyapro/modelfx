@@ -16,16 +16,11 @@ export function createModel<
     app: Application,
     params: Params,
     data: Data | undefined,
-    tools: {
-      normalize: <D>(
-        modelSelection: ModelSelection<any, any, D, Application, any>,
-        data: D,
-      ) => void;
-    },
+    tools: ModelTools<Data, Application>,
   ) => Effects,
   live: (
     effects: {
-      [K in keyof Effects]: (...args: Parameters<Effects[K]>) => Promise<void>;
+      [K in keyof Effects]: (...args: Parameters<Effects[K]>) => void;
     },
     params: Params,
   ) => ModelDie | undefined | void,
@@ -123,17 +118,12 @@ function getInstance<
     app: Application,
     params: Params,
     data: Data | undefined,
-    tools: {
-      normalize: <D>(
-        modelSelection: ModelSelection<any, any, D, Application, any>,
-        data: D,
-      ) => void;
-    },
+    tools: ModelTools<Data, Application>,
   ) => Effects,
   effectKeys: Array<keyof Effects>,
   live: (
     effects: {
-      [K in keyof Effects]: (...args: Parameters<Effects[K]>) => Promise<void>;
+      [K in keyof Effects]: (...args: Parameters<Effects[K]>) => void;
     },
     params: Params,
   ) => ModelDie | undefined | void,
@@ -175,7 +165,7 @@ function getInstance<
 
   const setState = (newState: ModelState<Data>) => {
     state = newState;
-    notify();
+    setTimeout(notify, 0);
   };
 
   const clearData = ({ delay = 3000 }: { delay?: number } = {}) => {
@@ -191,12 +181,50 @@ function getInstance<
   };
   let die: ModelDie | undefined | void;
 
-  let effectsQueue = Promise.resolve();
+  let effectsQueue: Array<ModelEffect<Data>> = [];
 
-  const tools = {
-    normalize: <D>(s: ModelSelection<any, any, D, Application, any>, d: D) =>
-      s(context)._normalize(d),
+  const processEffect = async (effect: ModelEffect<Data>) => {
+    const { isPending, data, error } = state;
+    try {
+      const result = effect();
+
+      if (result instanceof Promise) {
+        if (!isPending) {
+          setState({ isPending: true, data, error });
+        }
+        setState({
+          isPending: effectsQueue.length > 0,
+          data: await result,
+        });
+      } else {
+        setState({
+          isPending: isPending && effectsQueue.length > 0,
+          data: result,
+        });
+      }
+    } catch (error) {
+      setState({
+        isPending: effectsQueue.length > 0,
+        data,
+        error,
+      });
+    }
   };
+
+  const queueEffect = async (effect: ModelEffect<Data>) => {
+    if (effectsQueue.length === 0) {
+      do {
+        await processEffect(effect);
+      } while ((effect = effectsQueue.shift()!));
+    } else {
+      effectsQueue.push(effect);
+    }
+  };
+
+  const normalize = <D>(
+    s: ModelSelection<any, any, D, Application, any>,
+    d: D,
+  ) => s(context)._normalize(d);
 
   const effects = {} as ModelInstance<
     Name,
@@ -207,20 +235,32 @@ function getInstance<
   >['effects'];
 
   effectKeys.forEach((k: keyof Effects) => {
-    effects[k] = (...args: any) =>
-      (effectsQueue = effectsQueue.then(async () => {
-        let { data, error } = state;
+    effects[k] = (...args: any) => {
+      queueEffect(() => {
+        let detachedEffects: Array<ModelEffect<Data>> = [];
 
-        setState({ isPending: true, data, error });
-        try {
-          data = await effectsConfig(context.application, params, data, tools)[
-            k
-          ](...args);
-        } catch (e) {
-          error = e;
-        }
-        setState({ isPending: false, data, error });
-      }));
+        let isInEffect = true;
+
+        const result = effectsConfig(context.application, params, state.data, {
+          normalize,
+          detachEffect: (effect) => {
+            if (isInEffect) {
+              detachedEffects.unshift(effect);
+            } else {
+              effectsQueue.push(effect);
+            }
+          },
+        })[k](...args);
+
+        isInEffect = false;
+
+        detachedEffects.forEach((effect) => {
+          effectsQueue.unshift(effect);
+        });
+
+        return result;
+      });
+    };
   });
 
   return (instances[key] = {
@@ -248,10 +288,9 @@ function getInstance<
 
     effects: effects as any,
 
-    _normalize: (data: Data) =>
-      (effectsQueue = effectsQueue.then(() => {
-        setState({ isPending: false, data });
-      })),
+    _normalize(data: Data) {
+      queueEffect(() => data);
+    },
   });
 }
 
@@ -284,7 +323,7 @@ export interface ModelSelection<
   effects: {
     [K in keyof Effects]: (
       ...args: Parameters<Effects[K]>
-    ) => (context: ModelContext<Application>) => Promise<void>;
+    ) => (context: ModelContext<Application>) => void;
   };
 }
 
@@ -298,9 +337,9 @@ export type ModelInstance<
   getState: () => ModelState<Data>;
   subscribe: (listener: () => any) => () => void;
   effects: {
-    [K in keyof Effects]: (...args: Parameters<Effects[K]>) => Promise<void>;
+    [K in keyof Effects]: (...args: Parameters<Effects[K]>) => void;
   };
-  _normalize: (data: Data) => Promise<void>;
+  _normalize: (data: Data) => void;
 };
 
 export type ModelState<Data> = { data?: Data; error?: any; isPending: boolean };
@@ -312,6 +351,16 @@ export type ModelDispatch<Application> = <T>(
 type ModelDie = (tools: {
   clearData: (opts?: { delay?: number }) => void;
 }) => any;
+
+type ModelEffect<Data> = () => Promise<Data | undefined> | Data | undefined;
+
+interface ModelTools<Data, Application> {
+  normalize: <D>(
+    modelSelection: ModelSelection<any, any, D, Application, any>,
+    data: D,
+  ) => void;
+  detachEffect: (effect: () => Promise<Data | undefined>) => void;
+}
 
 type GetDataFromEffects<Effects> = Effects extends {
   [x: string]: (
