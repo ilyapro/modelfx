@@ -182,6 +182,7 @@ function getInstance<
   let die: ModelDie | undefined | void;
 
   let effectsQueue: Array<ModelEffect<Data>> = [];
+  let areEffectsRunning = false;
 
   const processEffect = async (effect: ModelEffect<Data>) => {
     const { isPending, data, error } = state;
@@ -212,12 +213,15 @@ function getInstance<
   };
 
   const queueEffect = async (effect: ModelEffect<Data>) => {
-    if (effectsQueue.length === 0) {
+    if (areEffectsRunning) {
+      effectsQueue.push(effect);
+    } else {
+      areEffectsRunning = true;
       do {
         await processEffect(effect);
       } while ((effect = effectsQueue.shift()!));
-    } else {
-      effectsQueue.push(effect);
+
+      areEffectsRunning = false;
     }
   };
 
