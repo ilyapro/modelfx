@@ -314,8 +314,8 @@ const todoItem = createModel(
   'todoItem',
 
   (app, params, data, tools) => ({
-    edit(newData: string) {
-      app.request(`todo/item?id=${params.id}`, { post: params }),
+    edit(newData) {
+      app.request(`todo/item?id=${params.id}`, { post: newData }),
       return newData;
     },
   }),
@@ -331,9 +331,9 @@ const todoItem = createModel(
   'todoItem',
 
   (app, params, data, tools) => ({
-    edit(newData: string) {
+    edit(newData) {
       tools.detachEffect(() =>
-        app.request(`todo/item?id=${params.id}`, { post: params }),
+        app.request(`todo/item?id=${params.id}`, { post: newData }),
       );
       return newData;
     },
