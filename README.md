@@ -7,13 +7,13 @@ Provides the creation of models that are shared components of storage and effect
 npm i modelfx
 ```
 
-[Model context](#model-context)
-[How to use models](#how-to-use-models)
-[How to use with React](#how-to-use-with-react)
-[How to use with Redux](#how-to-use-with-redux)
-[SSR](#ssr)
-[Normalize data](#normalize-data)
-[Optimistic updates](#optimistic-updates)
+- [Model context](#model-context)
+- [How to use models](#how-to-use-models)
+- [How to use with React](#how-to-use-with-react)
+- [How to use with Redux](#how-to-use-with-redux)
+- [SSR](#ssr)
+- [Normalize data](#normalize-data)
+- [Optimistic updates](#optimistic-updates)
 
 ## Model context
 
