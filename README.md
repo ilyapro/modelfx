@@ -50,11 +50,11 @@ const todoList = createModel(
     tools,
   ) => ({
     async fulfill() {
-      return data || (await request(`todo/list?user=${params.user}`));
+      return data || (await app.request(`todo/list?user=${params.user}`));
     },
 
     async update() {
-      return await request(`todo/list?user=${params.user}`);
+      return await app.request(`todo/list?user=${params.user}`);
     },
 
     justSetData(data) {
@@ -271,14 +271,14 @@ Now, you can use models in this context, and it is fulfilled already
 
 ## Normalize data
 
-If you want to normalize todoList data in two models (list and item), you can do it.
+If you want to normalize todoList data in two models (list and item), you can do it with `tools.normalize`
 
 ```javascript
 const todoList = createModel(
   'todoList',
   (app, params, data, tools) => ({
     async fulfill() {
-      list = await request(`todo/list?user=${params.user}`);
+      list = await app.request(`todo/list?user=${params.user}`);
 
       const ids = list.map((item) => {
         tools.normalize(todoItem({ id: item.id }), item);
@@ -302,4 +302,43 @@ The todoList now only stores a list of IDs, and the data for each item is stored
 ```javascript
 const ids = dispatch(todoList({ user: 'snapdog' })).getState().data;
 const items = ids.map((id) => dispatch(todoItem({ id })).getState().data);
+```
+
+## Optimistic updates
+
+If you want to update data immediately, you could try something like synchronous effect.
+This will indeed lead to an immediate update, but in case of a request error, it will not be handled.
+
+```javascript
+const todoItem = createModel(
+  'todoItem',
+
+  (app, params, data, tools) => ({
+    edit(newData: string) {
+      app.request(`todo/item?id=${params.id}`, { post: params }),
+      return newData;
+    },
+  }),
+
+  () => {},
+);
+```
+
+So there is `tools.detachEffect`. This will cause the request to be executed after the end of the effect call and the `todoItem` will be additionally updated with the result.
+
+```javascript
+const todoItem = createModel(
+  'todoItem',
+
+  (app, params, data, tools) => ({
+    edit(newData: string) {
+      tools.detachEffect(() =>
+        app.request(`todo/item?id=${params.id}`, { post: params }),
+      );
+      return newData;
+    },
+  }),
+
+  () => {},
+);
 ```
