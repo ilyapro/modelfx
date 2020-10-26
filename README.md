@@ -8,6 +8,7 @@ npm i modelfx
 ```
 
 - [Model context](#model-context)
+- [Model](#model)
 - [How to use models](#how-to-use-models)
 - [How to use with React](#how-to-use-with-react)
 - [How to use with Redux](#how-to-use-with-redux)
