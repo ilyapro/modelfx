@@ -66,23 +66,23 @@ export function createModel<
 }
 
 interface ModelContext<Application> {
-  state: Dict<Dict<ModelState<any>>>;
+  initialState: Dict<Dict<ModelState<any>>>;
   instances: Dict<Dict<ModelInstance<any, any, any, Application, any>>>;
   application: Application;
 }
 export interface ModelContextApi<Application> {
   dispatch: ModelDispatch<Application>;
-  getAllState: () => ModelContext<Application>['state'];
+  getAllState: () => ModelContext<Application>['initialState'];
 }
 export function createModelContext<Application>(
   application: Application,
-  initialState?: ModelContext<Application>['state'],
+  initialState: ModelContext<Application>['initialState'] = {},
 ): ModelContextApi<Application> {
   const instances: ModelContext<Application>['instances'] = {};
   const context = {
-    state: initialState || {},
-    instances,
     application,
+    initialState,
+    instances,
   };
   return {
     dispatch: (action) => action(context),
@@ -139,7 +139,7 @@ function getInstance<
       : params,
   );
 
-  const { instances: contextInstances, state: contextState } = context;
+  const { instances: contextInstances, initialState } = context;
 
   const instances = contextInstances[name] || (contextInstances[name] = {});
   const instance:
@@ -152,12 +152,12 @@ function getInstance<
   const { subscribe, notify } = createSubscription();
   let usingCounter = 0;
 
-  const states = contextState[name];
+  const states = initialState[name];
   let state: ModelState<Data> = states?.[key]!;
   if (state) {
     delete states![key];
     if (Object.keys(states!).length === 0) {
-      delete contextState[name];
+      delete initialState[name];
     }
   } else {
     state = { isPending: false };
@@ -168,8 +168,10 @@ function getInstance<
     setTimeout(notify, 0);
   };
 
+  let clearDataTimeoutId: NodeJS.Timeout | undefined;
+
   const clearData = ({ delay = 3000 }: { delay?: number } = {}) => {
-    setTimeout(() => {
+    clearDataTimeoutId = setTimeout(() => {
       if (usingCounter) {
         return;
       }
@@ -275,6 +277,9 @@ function getInstance<
 
       if (usingCounter++ === 0) {
         if (live) {
+          if (clearDataTimeoutId) {
+            clearTimeout(clearDataTimeoutId);
+          }
           die = live(effects, params);
         }
       }
