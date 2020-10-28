@@ -179,7 +179,18 @@ Now you can use any models easy in react components.
 
 ```javascript
 function MainContainer() {
-  const snapdogTodoListState = useModel(todoList({ user: 'snapdog' }));
+  const user = useModel(user()).data;
+  const snapdogTodoListState = useModel(todoList({ user: user?.name || '' }));
+
+  const firstTodoItemId = snapdogTodoListState.data?.[0].id;
+
+  const { dispatch } = useContext(ReactModelContext);
+  const editFirstItem = useCallback(() => {
+    if (!firstTodoItemId) {
+      return;
+    }
+    dispatch(todoItem({ id: firstTodoItemId }).effects.edit('new item data'));
+  }, [firstTodoItemId]);
 
   if (snapdogTodoListState.isPending) {
     return <div>loading</div>;
@@ -189,7 +200,7 @@ function MainContainer() {
     return <div>{snapdogTodoList.error}</div>;
   }
 
-  return <div>{snapdogTodoListState.data}</div>;
+  return <div onClick={editFirstItem}>{snapdogTodoListState.data}</div>;
 }
 ```
 
@@ -201,12 +212,12 @@ So, you can create universal model actions to easy access models api.
 
 ```javascript
 export const modelEffect = (modelEffect) => ({
-  type: 'MODEL/EFFECT'
+  type: 'MODEL_EFFECT'
   payload: modelEffect,
 });
 
 export const withModel = (modelSelection, action) => ({
-  type: 'MODEL/WITH_MODEL',
+  type: 'WITH_MODEL',
   payload: {
     modelSelection,
     action,
@@ -220,10 +231,10 @@ Create middleware to intercept these actions, then connect it to redux store.
 function createModelMiddleware(modelContext) {
   return (store) => (next) => (action) => {
     switch (action.type) {
-      case 'MODEL/EFFECT': {
+      case 'MODEL_EFFECT': {
         return modelContext.dispatch(action.payload);
       }
-      case 'MODEL/WITH_MODEL': {
+      case 'WITH_MODEL': {
         const modelState = modelContext
           .dispatch(action.payload.modelSelection)
           .getState();
@@ -256,7 +267,9 @@ server.js
 ```javascript
 const modelContext = createModelContext({...});
 
-await modelContext.dispatch(todoList({ user: 'snapdog' }).effects.fulfill());
+modelContext.dispatch(todoList({ user: 'snapdog' }).effects.fulfill());
+
+await modelContext.willReady();
 
 response.send(`
   <html>
@@ -272,7 +285,7 @@ response.send(`
 client.js
 
 ```javascript
-const modelContext = createModelContext({...}, window.MODEL_STATE);
+const modelContext = createModelContext(applicationContextThings, window.MODEL_STATE);
 ...
 ```
 

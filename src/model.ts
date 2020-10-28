@@ -66,13 +66,14 @@ export function createModel<
 }
 
 interface ModelContext<Application> {
-  initialState: Dict<Dict<ModelState<any>>>;
-  instances: Dict<Dict<ModelInstance<any, any, any, Application, any>>>;
+  initialState: Dict<ModelState<any>>;
+  instances: Dict<ModelInstance<any, any, any, Application, any>>;
   application: Application;
 }
 export interface ModelContextApi<Application> {
   dispatch: ModelDispatch<Application>;
   getAllState: () => ModelContext<Application>['initialState'];
+  willReady: () => Promise<void>;
 }
 export function createModelContext<Application>(
   application: Application,
@@ -86,20 +87,15 @@ export function createModelContext<Application>(
   };
   return {
     dispatch: (action) => action(context),
-    getAllState: () => {
-      return Object.keys(instances).reduce((state, name) => {
-        const instancesByName = instances[name]!;
-
-        state[name] = Object.keys(instancesByName).reduce(
-          (stateByName, key) => {
-            stateByName[key] = instancesByName[key]!.getState();
-            return stateByName;
-          },
-          {} as Dict<ModelState<any>>,
-        );
-
+    getAllState: () =>
+      Object.keys(instances).reduce((state, key) => {
+        state[key] = instances[key]!.getState();
         return state;
-      }, {} as Dict<Dict<ModelState<any>>>);
+      }, {} as Dict<ModelState<any>>),
+    willReady: async () => {
+      await Promise.all(
+        Object.keys(instances).map((key) => instances[key]!._willReady()),
+      );
     },
   };
 }
@@ -128,20 +124,21 @@ function getInstance<
     params: Params,
   ) => ModelDie | undefined | void,
 ): ModelInstance<Name, Params, Data, Application, Effects> {
-  const key = JSON.stringify(
-    typeof params === 'object' && !Array.isArray(params)
-      ? Object.keys(params!)
-          .sort()
-          .reduce((sortedParams: any, k) => {
-            sortedParams[k] = (params as any)[k];
-            return sortedParams;
-          }, {})
-      : params,
-  );
+  const key =
+    `${name}-` +
+    JSON.stringify(
+      typeof params === 'object' && !Array.isArray(params)
+        ? Object.keys(params!)
+            .sort()
+            .reduce((sortedParams: any, k) => {
+              sortedParams[k] = (params as any)[k];
+              return sortedParams;
+            }, {})
+        : params,
+    );
 
-  const { instances: contextInstances, initialState } = context;
+  const { instances, initialState } = context;
 
-  const instances = contextInstances[name] || (contextInstances[name] = {});
   const instance:
     | ModelInstance<Name, Params, Data, Application, Effects>
     | undefined = instances[key];
@@ -152,13 +149,9 @@ function getInstance<
   const { subscribe, notify } = createSubscription();
   let usingCounter = 0;
 
-  const states = initialState[name];
-  let state: ModelState<Data> = states?.[key]!;
+  let state: ModelState<Data> = initialState[key]!;
   if (state) {
-    delete states![key];
-    if (Object.keys(states!).length === 0) {
-      delete initialState[name];
-    }
+    delete initialState[key];
   } else {
     state = { isPending: false };
   }
@@ -172,19 +165,13 @@ function getInstance<
 
   const clearData = ({ delay = 3000 }: { delay?: number } = {}) => {
     clearDataTimeoutId = setTimeout(() => {
-      if (usingCounter) {
-        return;
-      }
-      delete contextInstances[name]![key];
-      if (Object.keys(contextInstances[name]!).length === 0) {
-        delete contextInstances[name];
-      }
+      delete instances[key];
     }, delay);
   };
   let die: ModelDie | undefined | void;
 
-  let effectsQueue: Array<ModelEffect<Data>> = [];
-  let areEffectsRunning = false;
+  let effectsQueue = Promise.resolve();
+  let effectsQueueLength = 0;
 
   const processEffect = async (effect: ModelEffect<Data>) => {
     const { isPending, data, error } = state;
@@ -196,35 +183,30 @@ function getInstance<
           setState({ isPending: true, data, error });
         }
         setState({
-          isPending: effectsQueue.length > 0,
+          isPending: effectsQueueLength > 0,
           data: await result,
         });
       } else {
         setState({
-          isPending: isPending && effectsQueue.length > 0,
+          isPending: isPending && effectsQueueLength > 0,
           data: result,
         });
       }
     } catch (error) {
       setState({
-        isPending: effectsQueue.length > 0,
+        isPending: effectsQueueLength > 0,
         data,
         error,
       });
     }
   };
 
-  const queueEffect = async (effect: ModelEffect<Data>) => {
-    if (areEffectsRunning) {
-      effectsQueue.push(effect);
-    } else {
-      areEffectsRunning = true;
-      do {
-        await processEffect(effect);
-      } while ((effect = effectsQueue.shift()!));
-
-      areEffectsRunning = false;
-    }
+  const queueEffect = (effect: ModelEffect<Data>) => {
+    effectsQueueLength++;
+    effectsQueue = effectsQueue.then(() => {
+      effectsQueueLength--;
+      return processEffect(effect);
+    });
   };
 
   const normalize = <D>(
@@ -232,16 +214,8 @@ function getInstance<
     d: D,
   ) => s(context)._normalize(d);
 
-  const effects = {} as ModelInstance<
-    Name,
-    Params,
-    Data,
-    Application,
-    Effects
-  >['effects'];
-
-  effectKeys.forEach((k: keyof Effects) => {
-    effects[k] = (...args: any) => {
+  const effects = effectKeys.reduce((acc, k: keyof Effects) => {
+    acc[k] = (...args: any) => {
       queueEffect(() => {
         let detachedEffects: Array<ModelEffect<Data>> = [];
 
@@ -251,23 +225,29 @@ function getInstance<
           normalize,
           detachEffect: (effect) => {
             if (isInEffect) {
-              detachedEffects.unshift(effect);
+              detachedEffects.push(effect);
             } else {
-              effectsQueue.push(effect);
+              queueEffect(effect);
             }
           },
         })[k](...args);
 
         isInEffect = false;
 
-        detachedEffects.forEach((effect) => {
-          effectsQueue.unshift(effect);
-        });
+        if (detachedEffects.length) {
+          (async () => {
+            let effect;
+            while ((effect = detachedEffects.shift())) {
+              await processEffect(effect);
+            }
+          })();
+        }
 
         return result;
       });
     };
-  });
+    return acc;
+  }, {} as ModelInstance<Name, Params, Data, Application, Effects>['effects']);
 
   return (instances[key] = {
     getState: () => state,
@@ -300,6 +280,8 @@ function getInstance<
     _normalize(data: Data) {
       queueEffect(() => data);
     },
+
+    _willReady: () => effectsQueue,
   });
 }
 
@@ -349,6 +331,7 @@ export type ModelInstance<
     [K in keyof Effects]: (...args: Parameters<Effects[K]>) => void;
   };
   _normalize: (data: Data) => void;
+  _willReady: () => Promise<void>;
 };
 
 export type ModelState<Data> = { data?: Data; error?: any; isPending: boolean };
