@@ -11,7 +11,6 @@ npm i modelfx
 - [Model](#model)
 - [How to use models](#how-to-use-models)
 - [How to use with React](#how-to-use-with-react)
-- [How to use with Redux](#how-to-use-with-redux)
 - [SSR](#ssr)
 - [Normalize data](#normalize-data)
 - [Optimistic updates](#optimistic-updates)
@@ -114,7 +113,7 @@ const snapdogTodoList = modelContext.dispatch(todoList({ user: 'snapdog' }));
 
 // First subscribe executes model's live. That will fulfill and refresh data, that cause repainting "container" with new todoList
 const unsubscribe = snapdogTodoList.subscribe(() => {
-  const { data, error, isPending } = snapdogTodoList.getSate();
+  const { data, error, isPending } = snapdogTodoList.getState();
 
   let content = 'empty';
   if (isPending) {
@@ -202,59 +201,6 @@ function MainContainer() {
 
   return <div onClick={editFirstItem}>{snapdogTodoListState.data}</div>;
 }
-```
-
-## How to use with Redux
-
-You dont need redux if you are using modelfx, but you probably want to do a soft migration.
-
-So, you can create universal model actions to easy access models api.
-
-```javascript
-export const modelEffect = (modelEffect) => ({
-  type: 'MODEL_EFFECT'
-  payload: modelEffect,
-});
-
-export const withModel = (modelSelection, action) => ({
-  type: 'WITH_MODEL',
-  payload: {
-    modelSelection,
-    action,
-  },
-});
-```
-
-Create middleware to intercept these actions, then connect it to redux store.
-
-```javascript
-function createModelMiddleware(modelContext) {
-  return (store) => (next) => (action) => {
-    switch (action.type) {
-      case 'MODEL_EFFECT': {
-        return modelContext.dispatch(action.payload);
-      }
-      case 'WITH_MODEL': {
-        const modelState = modelContext
-          .dispatch(action.payload.modelSelection)
-          .getState();
-        return store.dispatch(action.payload.action(modelState));
-      }
-    }
-    return next(action);
-  };
-}
-```
-
-Now you can dispatch model actions in redux store.
-
-```javascript
-store.dispatch(modelEffect(todoList({ user: 'snapdog' }).effects.fullfill()));
-...
-store.dispatch(withModel(todoList({ user: 'snapdog' })), (snapdogTodoListState) => {
-  const { data, error, isPending } = snapdogTodoLIstState;
-  ...
-});
 ```
 
 ## SSR
