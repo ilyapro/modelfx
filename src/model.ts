@@ -165,6 +165,9 @@ function getInstance<
 
   const clearData = ({ delay = 3000 }: { delay?: number } = {}) => {
     clearDataTimeoutId = setTimeout(() => {
+      if (usingCounter) {
+        return;
+      }
       delete instances[key];
     }, delay);
   };
