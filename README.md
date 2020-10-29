@@ -72,7 +72,7 @@ const todoList = createModel(
   }),
 
   // Model Live. That happens when model got a first subscriber
-  (effects) => {
+  (effects, params, app, { getState, subscribe }) => {
     effects.fulfill();
 
     // You can refresh your data from backend
