@@ -35,7 +35,7 @@ const modelContext = createModelContext(applicationContextThings);
 ## Model
 
 Model is component of storage and effects of some data.  
-You name the model, describe the effects and life cycle.
+You name the model, describe the effects and live.
 
 ```javascript
 import { createModel } from 'modelfx';
@@ -93,7 +93,7 @@ const todoList = createModel(
 
       // You can clear model data. Otherwise, it will be cached in model context.
       // After delay, the data will be cleared if no one will subscribed to the model
-      clearData({ delay: 180000 /* ms, default 3000 */ });
+      clearData({ delay: 180000 /* ms, default 15000 */ });
     };
   },
 );
@@ -215,7 +215,7 @@ const modelContext = createModelContext({...});
 
 modelContext.dispatch(todoList({ user: 'snapdog' }).effects.fulfill());
 
-await modelContext.willReady();
+await modelContext.willAllReady();
 
 response.send(`
   <html>
