@@ -12,23 +12,8 @@ export function createModel<
   }
 >(
   name: Name,
-  effects: (
-    app: App,
-    params: Params,
-    data: Data | undefined,
-    tools: ModelTools<Data, App>,
-  ) => Effects,
-  live: (
-    effects: {
-      [K in keyof Effects]: (...args: Parameters<Effects[K]>) => void;
-    },
-    params: Params,
-    app: App,
-    access: {
-      getState: () => ModelState<Data>;
-      subscribe: (listener: () => any) => () => void;
-    },
-  ) => ModelDie | undefined | void,
+  effects: ModelEffectsConfig<Params, Data, App, Effects>,
+  live: ModelLive<Params, Data, App, Effects>,
 ): Model<
   Name,
   Params,
@@ -55,7 +40,7 @@ export function createModel<
   );
 
   return (params: Params) => {
-    const modelSelection = (context: ModelContext<App>) =>
+    const modelSelection = (context: Context<App>) =>
       getInstance(name, context, params, effects, effectKeys, live);
 
     modelSelection.effects = effectKeys.reduce((acc, k) => {
@@ -70,21 +55,21 @@ export function createModel<
   };
 }
 
-interface ModelContext<App> {
+interface Context<App> {
   initialState: Dict<ModelState<any>>;
   instances: Dict<ModelInstance<any, any, any, App, any>>;
   app: App;
 }
-export interface ModelContextApi<App> {
+export interface ModelContext<App> {
   dispatch: ModelDispatch<App>;
-  getAllState: () => ModelContext<App>['initialState'];
+  getAllState: () => Context<App>['initialState'];
   willAllReady: () => Promise<void>;
 }
 export function createModelContext<App>(
   app: App,
-  initialState: ModelContext<App>['initialState'] = {},
-): ModelContextApi<App> {
-  const instances: ModelContext<App>['instances'] = {};
+  initialState: Context<App>['initialState'] = {},
+): ModelContext<App> {
+  const instances: Context<App>['instances'] = {};
   const context = {
     app,
     initialState,
@@ -113,26 +98,11 @@ function getInstance<
   Effects extends { [x: string]: (...args: any) => any }
 >(
   name: string,
-  context: ModelContext<App>,
+  context: Context<App>,
   params: Params,
-  effectsConfig: (
-    app: App,
-    params: Params,
-    data: Data | undefined,
-    tools: ModelTools<Data, App>,
-  ) => Effects,
+  effectsConfig: ModelEffectsConfig<Params, Data, App, Effects>,
   effectKeys: Array<keyof Effects>,
-  live: (
-    effects: {
-      [K in keyof Effects]: (...args: Parameters<Effects[K]>) => void;
-    },
-    params: Params,
-    app: App,
-    access: {
-      getState: () => ModelState<Data>;
-      subscribe: (listener: () => any) => () => void;
-    },
-  ) => ModelDie | undefined | void,
+  live: ModelLive<Params, Data, App, Effects>,
 ): ModelInstance<Name, Params, Data, App, Effects> {
   const key =
     `${name}-` +
@@ -176,19 +146,7 @@ function getInstance<
     }
   };
 
-  let clearDataTimeoutId: NodeJS.Timeout | undefined;
-
-  const clearData = ({ delay = 15000 }: { delay?: number } = {}) => {
-    clearDataTimeoutId = setTimeout(() => {
-      if (usingCounter) {
-        return;
-      }
-      delete instances[key];
-    }, delay);
-  };
-  let die: ModelDie | undefined | void;
-
-  let effectsQueue = Promise.resolve();
+  let effectsQueue: Promise<void> | void;
   let effectsQueueLength = 0;
 
   const processEffect = async (effect: ModelEffect<Data>) => {
@@ -200,11 +158,15 @@ function getInstance<
         if (!isPending) {
           setState({ isPending: true, data, error });
         }
-        setState({
-          isPending: effectsQueueLength > 0,
-          data: await result,
-        });
-      } else {
+        const newData = await result;
+
+        if (newData !== data || effectsQueueLength === 0) {
+          setState({
+            isPending: effectsQueueLength > 0,
+            data: newData,
+          });
+        }
+      } else if (result !== data || (isPending && effectsQueueLength === 0)) {
         setState({
           isPending: isPending && effectsQueueLength > 0,
           data: result,
@@ -219,51 +181,80 @@ function getInstance<
     }
   };
 
-  const queueEffect = (effect: ModelEffect<Data>) => {
-    effectsQueueLength++;
-    effectsQueue = effectsQueue.then(() => {
-      effectsQueueLength--;
-      return processEffect(effect);
-    });
+  const queueEffect = (effect: () => Promise<void> | void) => {
+    if (effectsQueue) {
+      effectsQueueLength++;
+      effectsQueue = effectsQueue
+        .then(() => {
+          effectsQueueLength--;
+          return effect();
+        })
+        .then(() => {
+          if (effectsQueueLength === 0) {
+            effectsQueue = undefined;
+          }
+        });
+    } else {
+      effectsQueue = effect();
+    }
   };
 
   const normalize = <D>(s: ModelSelection<any, any, D, App, any>, d: D) =>
     s(context)._normalize(d);
 
   const effects = effectKeys.reduce((acc, k: keyof Effects) => {
-    acc[k] = (...args: any) => {
-      queueEffect(() => {
+    acc[k] = (...args) => {
+      queueEffect(async () => {
         let detachedEffects: Array<ModelEffect<Data>> = [];
 
         let isInEffect = true;
 
-        const result = effectsConfig(app, params, state.data, {
-          normalize,
-          detachEffect: (effect) => {
-            if (isInEffect) {
-              detachedEffects.push(effect);
-            } else {
-              queueEffect(effect);
-            }
-          },
-        })[k](...args);
+        await processEffect(() =>
+          effectsConfig(app, params, state.data, {
+            normalize,
+            detachEffect: (effect) => {
+              if (isInEffect) {
+                detachedEffects.push(effect);
+              } else {
+                queueEffect(() => processEffect(effect));
+              }
+            },
+          })[k](...args),
+        );
 
-        isInEffect = false;
-
-        if (detachedEffects.length) {
-          (async () => {
-            let effect;
-            while ((effect = detachedEffects.shift())) {
-              await processEffect(effect);
-            }
-          })();
+        let effect;
+        while ((effect = detachedEffects.shift())) {
+          await processEffect(effect);
         }
 
-        return result;
+        isInEffect = false;
       });
     };
     return acc;
-  }, {} as ModelInstance<Name, Params, Data, App, Effects>['effects']);
+  }, {} as { [K in keyof Effects]: (...args: any) => void });
+
+  const willReady = async () => {
+    do {
+      await effectsQueue;
+    } while (effectsQueueLength);
+  };
+
+  let clearDataTimeoutId: NodeJS.Timeout | undefined;
+
+  const clearData = ({ delay = 15000 }: { delay?: number } = {}) => {
+    Promise.all([
+      willReady(),
+      new Promise((resolve) => {
+        clearDataTimeoutId = setTimeout(() => resolve, delay);
+      }),
+    ]).then(() => {
+      if (usingCounter) {
+        return;
+      }
+      delete instances[key];
+    });
+  };
+  let die: ModelDie | undefined | void;
 
   return (instances[key] = {
     getState,
@@ -298,10 +289,10 @@ function getInstance<
     effects: effects as any,
 
     _normalize(data: Data) {
-      queueEffect(() => data);
+      queueEffect(() => processEffect(() => data));
     },
 
-    _willReady: () => effectsQueue,
+    _willReady: willReady,
   });
 }
 
@@ -322,11 +313,11 @@ export interface ModelSelection<
   App,
   Effects extends { [x: string]: (...args: any) => any }
 > {
-  (context: ModelContext<App>): ModelInstance<Name, Params, Data, App, Effects>;
+  (context: Context<App>): ModelInstance<Name, Params, Data, App, Effects>;
   effects: {
     [K in keyof Effects]: (
       ...args: Parameters<Effects[K]>
-    ) => (context: ModelContext<App>) => void;
+    ) => (context: Context<App>) => void;
   };
 }
 
@@ -334,7 +325,7 @@ export type ModelInstance<
   _Name extends string,
   _Params,
   Data,
-  _Application,
+  _App,
   Effects extends { [x: string]: (...args: any) => any }
 > = {
   getState: () => ModelState<Data>;
@@ -348,17 +339,39 @@ export type ModelInstance<
 
 export type ModelState<Data> = { data?: Data; error?: any; isPending: boolean };
 
-export type ModelDispatch<App> = <T>(
-  action: (context: ModelContext<App>) => T,
-) => T;
+export type ModelDispatch<App> = <T>(action: (context: Context<App>) => T) => T;
 
-type ModelDie = (tools: {
+export type ModelLive<
+  Params,
+  Data,
+  App,
+  Effects extends { [x: string]: (...args: any) => any }
+> = (
+  effects: {
+    [K in keyof Effects]: (...args: Parameters<Effects[K]>) => void;
+  },
+  params: Params,
+  app: App,
+  access: {
+    getState: () => ModelState<Data>;
+    subscribe: (listener: () => any) => () => void;
+  },
+) => ModelDie | undefined | void;
+
+export type ModelEffectsConfig<Params, Data, App, Effects> = (
+  app: App,
+  params: Params,
+  data: Data | undefined,
+  tools: ModelTools<Data, App>,
+) => Effects;
+
+export type ModelDie = (tools: {
   clearData: (opts?: { delay?: number }) => void;
 }) => any;
 
 type ModelEffect<Data> = () => Promise<Data | undefined> | Data | undefined;
 
-interface ModelTools<Data, App> {
+export interface ModelTools<Data, App> {
   normalize: <D>(
     modelSelection: ModelSelection<any, any, D, App, any>,
     data: D,

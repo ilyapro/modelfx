@@ -4,7 +4,11 @@ export {
   Model,
   ModelSelection,
   ModelInstance,
+  ModelEffectsConfig,
+  ModelLive,
+  ModelDie,
   ModelState,
   ModelDispatch,
-  ModelContextApi as ModelContext,
+  ModelContext,
+  ModelTools,
 } from './model';

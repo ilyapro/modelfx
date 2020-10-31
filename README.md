@@ -86,10 +86,21 @@ const todoList = createModel(
     };
     window.addEventListener('storage', storageHandler);
 
-    // Model Die. That happens when model lost a last subscriber
+    // Or handle each state change with the subscribe.
+    // Internal subscription does not affect the model death that occurs when all external subscriptions are lost.
+    const socket = createSocket().connect('remotetodolist:5111');
+    socket.on('connect', () => {
+      const unsubscribe = subscribe(() => {
+        socket.send(getState());
+      });
+      socket.on('disconnect', unsubscribe);
+    });
+
+    // Model Die. That happens when model lost a last external subscriber
     return ({ clearData }) => {
       clearInterval(refreshIntervalId);
       window.removeEventListener('storage', storageHandler);
+      socket.disconnect();
 
       // You can clear model data. Otherwise, it will be cached in model context.
       // After delay, the data will be cleared if no one will subscribed to the model
