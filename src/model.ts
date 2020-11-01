@@ -245,7 +245,7 @@ function getInstance<
     Promise.all([
       willReady(),
       new Promise((resolve) => {
-        clearDataTimeoutId = setTimeout(() => resolve, delay);
+        clearDataTimeoutId = setTimeout(resolve, delay);
       }),
     ]).then(() => {
       if (usingCounter) {
