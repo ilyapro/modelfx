@@ -1,6 +1,4 @@
 export {
-  createModel,
-  createModelContext,
   Model,
   ModelSelection,
   ModelInstance,
@@ -11,4 +9,6 @@ export {
   ModelDispatch,
   ModelContext,
   ModelTools,
-} from './model';
+} from './types';
+
+export { createModel, createModelContext } from './model';
