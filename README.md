@@ -161,13 +161,13 @@ export function useModel(selection) {
   const instance = context.dispatch(selection);
   const [state, setState] = React.useState(instance.getState());
 
-  React.useEffect(
-    () =>
-      instance.subscribe(() => {
-        setState(instance.getState());
-      }),
-    [instance],
-  );
+  React.useEffect(() => {
+    setState(instance.getState());
+
+    return instance.subscribe(() => {
+      setState(instance.getState());
+    });
+  }, [instance]);
   return state;
 }
 ```
