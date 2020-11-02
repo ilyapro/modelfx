@@ -182,7 +182,7 @@ function getInstance<
   const effects = effectKeys.reduce((acc, k: keyof Effects) => {
     acc[k] = (...args) => {
       queueEffect(async () => {
-        let detachedEffects: Array<ModelEffect<Data>> = [];
+        const detachedEffects: Array<ModelEffect<Data>> = [];
 
         let isInEffect = true;
 
@@ -257,7 +257,7 @@ function getInstance<
       };
     },
 
-    effects: effects as any,
+    effects,
 
     _normalize(data: Data) {
       queueEffect(() => processEffect(() => data));

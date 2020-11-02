@@ -5,7 +5,7 @@ export function createKey(params: any): string {
     }
 
     case 'string': {
-      return `s${params.replace(/|/g, '|d')}`;
+      return `s${params.replace(/\|/g, '|d')}`;
     }
 
     case 'object': {
@@ -22,7 +22,7 @@ export function createKey(params: any): string {
         .reduce((acc, key) => {
           const value = params[key];
           if (value !== undefined) {
-            acc.push(`${key}:${createKey(value)}`);
+            acc.push(`${key.replace(/\|/g, '|d')}|${createKey(value)}`);
           }
           return acc;
         }, [] as string[])
