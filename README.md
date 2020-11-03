@@ -168,6 +168,7 @@ export function useModel(selection) {
       setState(instance.getState());
     });
   }, [instance]);
+
   return state;
 }
 ```
@@ -189,8 +190,8 @@ Now you can use any models easy in react components.
 
 ```javascript
 function MainContainer() {
-  const user = useModel(user()).data;
-  const snapdogTodoListState = useModel(todoList({ user: user?.name || '' }));
+  const userName = useModel(user()).data?.name;
+  const snapdogTodoListState = useModel(todoList({ user: userName || '' }));
 
   const firstTodoItemId = snapdogTodoListState.data?.[0].id;
 
