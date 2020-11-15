@@ -1,6 +1,6 @@
 # modelfx
 
-Lightweight framework for decomposited dataflow control. Can act as M in MVC pattern.
+JS(TS) lightweight library for decomposited dataflow control. Can act as M in MVC pattern.
 Provides the creation of models that are shared components of storage and effects of some data.
 
 ```
@@ -22,7 +22,7 @@ Contexts are isolated, so data of same model in different contexts are diffrent 
 Also, model context can hold some application context to use in model effects.
 
 ```javascript
-import { createModelContext } from 'modelfx';
+import { createModelContext } from "modelfx";
 
 const applicationContextThings = {
   config,
@@ -38,15 +38,14 @@ Model is component of storage and effects of some data.
 You name the model, describe the effects and live.
 
 ```javascript
-import { createModel } from 'modelfx';
+import { createModel } from "modelfx";
 
 const todoList = createModel(
   // Model Name. That used as unique namespace to sync data beetween server and client.
-  'todoList',
+  "todoList",
 
   // Model Effects. That produce some external work and mutate model data asynchronously.
   // Effects return new data, then subscribers will be notified.
-  // Effects calls will always sequence in promise queue, so there are no edge cases with parallel mutations and unpredictable states.
   (
     // Your things from context creation
     app,
@@ -55,7 +54,7 @@ const todoList = createModel(
     // Actual data of model in current moment
     data,
     // System tools for some features
-    tools,
+    tools
   ) => ({
     async fulfill() {
       return data || (await app.request(`todo/list?user=${params.user}`));
@@ -84,29 +83,29 @@ const todoList = createModel(
     const storageHandler = (event) => {
       effects.justSetData(event.newValue);
     };
-    window.addEventListener('storage', storageHandler);
+    window.addEventListener("storage", storageHandler);
 
     // Or handle each state change with the subscribe.
     // Internal subscription does not affect the model death that occurs when all external subscriptions are lost.
-    const socket = createSocket().connect('remotetodolist:5111');
-    socket.on('connect', () => {
+    const socket = createSocket().connect("remotetodolist:5111");
+    socket.on("connect", () => {
       const unsubscribe = subscribe(() => {
         socket.send(getState());
       });
-      socket.on('disconnect', unsubscribe);
+      socket.on("disconnect", unsubscribe);
     });
 
     // Model Die. That happens when model lost a last external subscriber
     return ({ clearData }) => {
       clearInterval(refreshIntervalId);
-      window.removeEventListener('storage', storageHandler);
+      window.removeEventListener("storage", storageHandler);
       socket.disconnect();
 
       // You can clear model data. Otherwise, it will be cached in model context.
       // After delay, the data will be cleared if no one will subscribed to the model
       clearData({ delay: 180000 /* ms, default 15000 */ });
     };
-  },
+  }
 );
 ```
 
@@ -120,26 +119,26 @@ When you access the instance, it is instantiated once and lives as long as it ha
 const modelContext = createModelContext({ request });
 
 // Call the instance of todoList
-const snapdogTodoList = modelContext.dispatch(todoList({ user: 'snapdog' }));
+const snapdogTodoList = modelContext.dispatch(todoList({ user: "snapdog" }));
 
 // First subscribe executes model's live. That will fulfill and refresh data, that cause repainting "container" with new todoList
 const unsubscribe = snapdogTodoList.subscribe(() => {
   const { data, error, isPending } = snapdogTodoList.getState();
 
-  let content = 'empty';
+  let content = "empty";
   if (isPending) {
-    content = 'loading';
+    content = "loading";
   } else if (error) {
     content = JSON.strinigy(error);
   } else if (data) {
     content = JSON.stringify(data);
   }
-  document.getElementById('container').innerText = content;
+  document.getElementById("container").innerText = content;
 });
 
 // Also you can dispatch effects
-window.addEventListener('focus', () => {
-  modelContext.dispatch(todoList({ user: 'snapdog' }).effects.update());
+window.addEventListener("focus", () => {
+  modelContext.dispatch(todoList({ user: "snapdog" }).effects.update());
   // or simillar
   snapdogTodoList.effects.update();
 });
@@ -191,7 +190,7 @@ Now you can use any models easy in react components.
 ```javascript
 function MainContainer() {
   const userName = useModel(user()).data?.name;
-  const snapdogTodoListState = useModel(todoList({ user: userName || '' }));
+  const snapdogTodoListState = useModel(todoList({ user: userName || "" }));
 
   const firstTodoItemId = snapdogTodoListState.data?.[0].id;
 
@@ -200,7 +199,7 @@ function MainContainer() {
     if (!firstTodoItemId) {
       return;
     }
-    dispatch(todoItem({ id: firstTodoItemId }).effects.edit('new item data'));
+    dispatch(todoItem({ id: firstTodoItemId }).effects.edit("new item data"));
   }, [firstTodoItemId]);
 
   if (snapdogTodoListState.isPending) {
@@ -255,7 +254,7 @@ If you want to normalize todoList data in two models (list and item), you can do
 
 ```javascript
 const todoList = createModel(
-  'todoList',
+  "todoList",
   (app, params, data, tools) => ({
     async fulfill() {
       list = await app.request(`todo/list?user=${params.user}`);
@@ -267,20 +266,20 @@ const todoList = createModel(
       return ids;
     },
   }),
-  () => {},
+  () => {}
 );
 
 const todoItem = createModel(
-  'todoItem',
+  "todoItem",
   () => ({}),
-  () => {},
+  () => {}
 );
 ```
 
 The todoList now only stores a list of IDs, and the data for each item is stored in todoItem.
 
 ```javascript
-const ids = dispatch(todoList({ user: 'snapdog' })).getState().data;
+const ids = dispatch(todoList({ user: "snapdog" })).getState().data;
 const items = ids.map((id) => dispatch(todoItem({ id })).getState().data);
 ```
 
@@ -308,17 +307,17 @@ So there is `tools.detachEffect`. This will cause the request to be executed aft
 
 ```javascript
 const todoItem = createModel(
-  'todoItem',
+  "todoItem",
 
   (app, params, data, tools) => ({
     edit(newData) {
       tools.detachEffect(() =>
-        app.request(`todo/item?id=${params.id}`, { post: newData }),
+        app.request(`todo/item?id=${params.id}`, { post: newData })
       );
       return newData;
     },
   }),
 
-  () => {},
+  () => {}
 );
 ```
