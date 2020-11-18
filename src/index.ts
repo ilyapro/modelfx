@@ -2,6 +2,7 @@ export {
   Model,
   ModelSelection,
   ModelInstance,
+  ModelEffect,
   ModelEffectsConfig,
   ModelLive,
   ModelDie,
@@ -9,6 +10,7 @@ export {
   ModelDispatch,
   ModelContext,
   ModelTools,
+  ModelDebugEvent,
 } from './types';
 
 export { createModel, createModelContext } from './model';

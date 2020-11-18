@@ -73,7 +73,7 @@ export function createModelContext<App>(
   initialState: Dict<ModelState<any>> = {},
 ): ModelContext<App> {
   const instances: Dict<ModelInstance<any, any, any, App, any>> = {};
-  const context = {
+  const context: Context<App> = {
     app,
     initialState,
     instances,
@@ -89,6 +89,24 @@ export function createModelContext<App>(
       await Promise.all(
         Object.keys(instances).map((key) => instances[key]._willReady()),
       );
+    },
+    getDebugger: () => {
+      const debug =
+        context.debug ||
+        (context.debug = {
+          subscription: createSubscription(),
+        });
+
+      return {
+        listenToAllEvents: (listener) =>
+          debug.subscription.subscribe((event) => {
+            try {
+              listener(event);
+            } catch (error) {
+              console.error(error);
+            }
+          }),
+      };
     },
   };
 }
@@ -109,7 +127,7 @@ function getInstance<
 ): ModelInstance<Name, Params, Data, App, Effects> {
   const key = createKey([name, params]);
 
-  const { app, instances, initialState } = context;
+  const { app, instances, initialState, debug } = context;
 
   const instance: ModelInstance<Name, Params, Data, App, Effects> | undefined =
     instances[key];
@@ -144,7 +162,7 @@ function getInstance<
     willReady: willEffectsReady,
   } = createQueue();
 
-  const processEffect = async (effect: ModelEffect<Data>) => {
+  const processEffect = (effect: ModelEffect<Data>): Promise<void> | void => {
     const { isPending, data, error } = state;
     try {
       const result = effect();
@@ -153,14 +171,15 @@ function getInstance<
         if (!isPending) {
           setState({ isPending: true, data, error });
         }
-        const newData = await result;
 
-        if (newData !== data || isEffectsQueueEmpty()) {
-          setState({
-            isPending: !isEffectsQueueEmpty(),
-            data: newData,
-          });
-        }
+        return result.then((newData) => {
+          if (newData !== data || isEffectsQueueEmpty()) {
+            setState({
+              isPending: !isEffectsQueueEmpty(),
+              data: newData,
+            });
+          }
+        });
       } else if (result !== data || (isPending && isEffectsQueueEmpty())) {
         setState({
           isPending: isPending && !isEffectsQueueEmpty(),
@@ -181,12 +200,12 @@ function getInstance<
 
   const effects = effectKeys.reduce((acc, k: keyof Effects) => {
     acc[k] = (...args) => {
-      queueEffect(async () => {
-        const detachedEffects: Array<ModelEffect<Data>> = [];
+      queueEffect(() => {
+        const detachedEffects: Array<() => Promise<Data | undefined>> = [];
 
         let isInEffect = true;
 
-        await processEffect(() =>
+        let promise = processEffect(() =>
           effectsConfig(app, params, state.data, {
             normalize,
             detachEffect: (effect) => {
@@ -199,12 +218,54 @@ function getInstance<
           })[k](...args),
         );
 
-        let effect;
-        while ((effect = detachedEffects.shift())) {
-          await processEffect(effect);
+        if (debug) {
+          if (promise) {
+            debug.subscription.notify({
+              type: 'effectStart',
+              model: { name, params, state },
+              effect: { name: k as string, args },
+            });
+            promise.then(() => {
+              debug.subscription.notify({
+                type: !state.error ? 'effectSuccess' : 'effectError',
+                model: { name, params, state },
+                effect: { name: k as string, args },
+              });
+            });
+          } else {
+            debug.subscription.notify({
+              type: !state.error ? 'syncEffectSuccess' : 'syncEffectError',
+              model: { name, params, state },
+              effect: { name: k as string, args },
+            });
+          }
+        }
+
+        if (detachedEffects.length) {
+          promise = Promise.resolve(promise)
+            .then(() =>
+              (async function detachEffectRecursion(): Promise<void> {
+                const effect = detachedEffects.shift();
+
+                if (effect) {
+                  return Promise.resolve(processEffect(effect)).then(
+                    detachEffectRecursion,
+                  );
+                }
+              })(),
+            )
+            .then(() => {
+              debug?.subscription.notify({
+                type: !state.error ? 'detachSuccess' : 'detachError',
+                model: { name, params, state },
+                effect: { name: k as string, args },
+              });
+            });
         }
 
         isInEffect = false;
+
+        return promise;
       });
     };
     return acc;
@@ -239,6 +300,10 @@ function getInstance<
             clearTimeout(clearDataTimeoutId);
           }
           try {
+            debug?.subscription.notify({
+              type: 'live',
+              model: { name, params, state },
+            });
             die = live(effects, params, app, { subscribe, getState });
           } catch (error) {
             console.error(error);
@@ -253,6 +318,10 @@ function getInstance<
           if (die) {
             die({ clearData });
           }
+          debug?.subscription.notify({
+            type: 'die',
+            model: { name, params, state },
+          });
         }
       };
     },
@@ -260,7 +329,14 @@ function getInstance<
     effects,
 
     _normalize(data: Data) {
-      queueEffect(() => processEffect(() => data));
+      queueEffect(() => {
+        processEffect(() => data);
+
+        debug?.subscription.notify({
+          type: 'normalize',
+          model: { name, params, state },
+        });
+      });
     },
 
     _willReady: willEffectsReady,

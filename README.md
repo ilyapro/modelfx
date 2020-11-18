@@ -54,7 +54,7 @@ const todoList = createModel(
     // Actual data of model in current moment
     data,
     // System tools for some features
-    tools
+    tools,
   ) => ({
     async fulfill() {
       return data || (await app.request(`todo/list?user=${params.user}`));
@@ -105,7 +105,7 @@ const todoList = createModel(
       // After delay, the data will be cleared if no one will subscribed to the model
       clearData({ delay: 180000 /* ms, default 15000 */ });
     };
-  }
+  },
 );
 ```
 
@@ -129,7 +129,7 @@ const unsubscribe = snapdogTodoList.subscribe(() => {
   if (isPending) {
     content = 'loading';
   } else if (error) {
-    content = JSON.strinigy(error);
+    content = JSON.stringify(error);
   } else if (data) {
     content = JSON.stringify(data);
   }
@@ -266,13 +266,13 @@ const todoList = createModel(
       return ids;
     },
   }),
-  () => {}
+  () => {},
 );
 
 const todoItem = createModel(
   'todoItem',
   () => ({}),
-  () => {}
+  () => {},
 );
 ```
 
@@ -312,12 +312,12 @@ const todoItem = createModel(
   (app, params, data, tools) => ({
     edit(newData) {
       tools.detachEffect(() =>
-        app.request(`todo/item?id=${params.id}`, { post: newData })
+        app.request(`todo/item?id=${params.id}`, { post: newData }),
       );
       return newData;
     },
   }),
 
-  () => {}
+  () => {},
 );
 ```

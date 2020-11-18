@@ -1,23 +1,32 @@
-export type Listener = () => void;
+export type Listener<Args extends any[]> = (...args: Args) => void;
 
-type Node = { prev?: Node; next?: Node; fn: Listener };
+type Node<Args extends any[]> = {
+  prev?: Node<Args>;
+  next?: Node<Args>;
+  fn: Listener<Args>;
+};
 
-export function createSubscription() {
-  let first: Node | undefined;
-  let last: Node | undefined;
+export type Subscription<Args extends any[]> = {
+  notify: (...args: Args) => void;
+  subscribe: (fn: Listener<Args>) => () => void;
+};
+
+export function createSubscription<Args extends any[]>(): Subscription<Args> {
+  let first: Node<Args> | undefined;
+  let last: Node<Args> | undefined;
 
   return {
-    notify() {
+    notify(...args) {
       let curr = first;
 
       while (curr) {
-        curr.fn();
+        curr.fn(...args);
         curr = curr.next;
       }
     },
 
-    subscribe(fn: Listener) {
-      const node: Node = { fn };
+    subscribe(fn) {
+      const node: Node<Args> = { fn };
 
       if (!first || !last) {
         first = node;

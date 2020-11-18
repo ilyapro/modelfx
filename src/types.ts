@@ -1,8 +1,34 @@
+import { Subscription } from './subscription';
+
 export interface ModelContext<App> {
   dispatch: ModelDispatch<App>;
   getAllState: () => Context<App>['initialState'];
   willAllReady: () => Promise<void>;
+  getDebugger: () => {
+    listenToAllEvents: (
+      listener: (event: ModelDebugEvent) => any,
+    ) => () => void;
+  };
 }
+
+export type ModelDebugEvent =
+  | GetDebugEvent<'live'>
+  | GetDebugEvent<'die'>
+  | GetDebugEvent<'effectStart', { effect: DebugEventEffect }>
+  | GetDebugEvent<'effectSuccess', { effect: DebugEventEffect }>
+  | GetDebugEvent<'effectError', { effect: DebugEventEffect }>
+  | GetDebugEvent<'detachSuccess', { effect: DebugEventEffect }>
+  | GetDebugEvent<'detachError', { effect: DebugEventEffect }>
+  | GetDebugEvent<'syncEffectSuccess', { effect: DebugEventEffect }>
+  | GetDebugEvent<'syncEffectError', { effect: DebugEventEffect }>
+  | GetDebugEvent<'normalize'>;
+
+type GetDebugEvent<Type extends string, Adds extends {} = {}> = {
+  type: Type;
+  model: { name: string; params: any; state: ModelState<any> };
+} & Adds;
+
+type DebugEventEffect = { name: string; args: any };
 
 export type Model<
   Name extends string,
@@ -88,4 +114,7 @@ export type Context<App> = {
   initialState: Dict<ModelState<any>>;
   instances: Dict<ModelInstance<any, any, any, App, any>>;
   app: App;
+  debug?: {
+    subscription: Subscription<[ModelDebugEvent]>;
+  };
 };
