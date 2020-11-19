@@ -4,23 +4,23 @@ export interface ModelContext<App> {
   dispatch: ModelDispatch<App>;
   getAllState: () => Context<App>['initialState'];
   willAllReady: () => Promise<void>;
-  getDebugger: () => {
-    listenToAllEvents: (
-      listener: (event: ModelDebugEvent) => any,
-    ) => () => void;
-  };
+  getDebugger: () => ModelDebugger;
 }
+
+export type ModelDebugger = {
+  listenToAllEvents: (listener: (event: ModelDebugEvent) => void) => () => void;
+};
 
 export type ModelDebugEvent =
   | GetDebugEvent<'live'>
   | GetDebugEvent<'die'>
-  | GetDebugEvent<'effectStart', { effect: DebugEventEffect }>
-  | GetDebugEvent<'effectSuccess', { effect: DebugEventEffect }>
-  | GetDebugEvent<'effectError', { effect: DebugEventEffect }>
-  | GetDebugEvent<'detachSuccess', { effect: DebugEventEffect }>
-  | GetDebugEvent<'detachError', { effect: DebugEventEffect }>
-  | GetDebugEvent<'syncEffectSuccess', { effect: DebugEventEffect }>
-  | GetDebugEvent<'syncEffectError', { effect: DebugEventEffect }>
+  | GetDebugEvent<'effectStart', { effect: ModelDebugEventEffect }>
+  | GetDebugEvent<'effectSuccess', { effect: ModelDebugEventEffect }>
+  | GetDebugEvent<'effectError', { effect: ModelDebugEventEffect }>
+  | GetDebugEvent<'detachSuccess', { effect: ModelDebugEventEffect }>
+  | GetDebugEvent<'detachError', { effect: ModelDebugEventEffect }>
+  | GetDebugEvent<'syncEffectSuccess', { effect: ModelDebugEventEffect }>
+  | GetDebugEvent<'syncEffectError', { effect: ModelDebugEventEffect }>
   | GetDebugEvent<'normalize'>;
 
 type GetDebugEvent<Type extends string, Adds extends {} = {}> = {
@@ -28,7 +28,7 @@ type GetDebugEvent<Type extends string, Adds extends {} = {}> = {
   model: { name: string; params: any; state: ModelState<any> };
 } & Adds;
 
-type DebugEventEffect = { name: string; args: any };
+export type ModelDebugEventEffect = { name: string; args: any[] };
 
 export type Model<
   Name extends string,
@@ -115,6 +115,6 @@ export type Context<App> = {
   instances: Dict<ModelInstance<any, any, any, App, any>>;
   app: App;
   debug?: {
-    subscription: Subscription<[ModelDebugEvent]>;
+    emitEvent: Subscription<[ModelDebugEvent]>['notify'];
   };
 };

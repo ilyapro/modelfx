@@ -13,7 +13,11 @@ import {
   ModelInstance,
   ModelSelection,
   ModelState,
+  ModelDebugger,
+  ModelDebugEvent,
+  ModelDebugEventEffect,
 } from './types';
+import { safe } from './safe';
 
 const idExistance: Dict<true> = {};
 
@@ -52,15 +56,22 @@ export function createModel<
     effects({} as any, {} as any, {} as any, {} as any) || {},
   );
 
+  const safeLive = safe(live);
+
   return (params: Params) => {
     const modelSelection = (context: Context<App>) =>
-      getInstance(name, context, params, effects, effectKeys, live);
+      getInstance(name, context, params, effects, effectKeys, safeLive);
 
     modelSelection.effects = effectKeys.reduce((acc, k) => {
       acc[k] = (...args: any) => (context: any) =>
-        getInstance(name, context, params, effects, effectKeys, live).effects[
-          k
-        ](...args);
+        getInstance(
+          name,
+          context,
+          params,
+          effects,
+          effectKeys,
+          safeLive,
+        ).effects[k](...args);
       return acc;
     }, {} as any);
 
@@ -73,11 +84,15 @@ export function createModelContext<App>(
   initialState: Dict<ModelState<any>> = {},
 ): ModelContext<App> {
   const instances: Dict<ModelInstance<any, any, any, App, any>> = {};
+
   const context: Context<App> = {
     app,
     initialState,
     instances,
   };
+
+  let dbgr: ModelDebugger | undefined;
+
   return {
     dispatch: (action) => action(context),
     getAllState: () =>
@@ -91,22 +106,19 @@ export function createModelContext<App>(
       );
     },
     getDebugger: () => {
-      const debug =
-        context.debug ||
-        (context.debug = {
-          subscription: createSubscription(),
-        });
+      if (dbgr) {
+        return dbgr;
+      }
 
-      return {
-        listenToAllEvents: (listener) =>
-          debug.subscription.subscribe((event) => {
-            try {
-              listener(event);
-            } catch (error) {
-              console.error(error);
-            }
-          }),
+      const { subscribe, notify } = createSubscription();
+
+      context.debug = {
+        emitEvent: notify,
       };
+
+      return (dbgr = {
+        listenToAllEvents: subscribe,
+      });
     },
   };
 }
@@ -127,13 +139,13 @@ function getInstance<
 ): ModelInstance<Name, Params, Data, App, Effects> {
   const key = createKey([name, params]);
 
-  const { app, instances, initialState, debug } = context;
-
   const instance: ModelInstance<Name, Params, Data, App, Effects> | undefined =
-    instances[key];
+    context.instances[key];
   if (instance) {
     return instance;
   }
+
+  const { app, instances, initialState, debug } = context;
 
   const { subscribe, notify } = createSubscription();
   let usingCounter = 0;
@@ -149,12 +161,21 @@ function getInstance<
 
   const setState = (newState: ModelState<Data>) => {
     state = newState;
-    try {
-      notify();
-    } catch (error) {
-      console.error(error);
-    }
+    notify();
   };
+
+  const debugEmitEvent = debug
+    ? (type: ModelDebugEvent['type'], effect?: ModelDebugEventEffect) => {
+        const event: any = {
+          type,
+          model: { name, params, state },
+        };
+        if (effect) {
+          event.effect = effect;
+        }
+        debug.emitEvent(event);
+      }
+    : () => {};
 
   const {
     add: queueEffect,
@@ -171,7 +192,6 @@ function getInstance<
         if (!isPending) {
           setState({ isPending: true, data, error });
         }
-
         return result.then((newData) => {
           if (newData !== data || isEffectsQueueEmpty()) {
             setState({
@@ -220,24 +240,18 @@ function getInstance<
 
         if (debug) {
           if (promise) {
-            debug.subscription.notify({
-              type: 'effectStart',
-              model: { name, params, state },
-              effect: { name: k as string, args },
-            });
+            debugEmitEvent('effectStart', { name: k as string, args });
             promise.then(() => {
-              debug.subscription.notify({
-                type: !state.error ? 'effectSuccess' : 'effectError',
-                model: { name, params, state },
-                effect: { name: k as string, args },
+              debugEmitEvent(!state.error ? 'effectSuccess' : 'effectError', {
+                name: k as string,
+                args,
               });
             });
           } else {
-            debug.subscription.notify({
-              type: !state.error ? 'syncEffectSuccess' : 'syncEffectError',
-              model: { name, params, state },
-              effect: { name: k as string, args },
-            });
+            debugEmitEvent(
+              !state.error ? 'syncEffectSuccess' : 'syncEffectError',
+              { name: k as string, args },
+            );
           }
         }
 
@@ -246,7 +260,6 @@ function getInstance<
             .then(() =>
               (async function detachEffectRecursion(): Promise<void> {
                 const effect = detachedEffects.shift();
-
                 if (effect) {
                   return Promise.resolve(processEffect(effect)).then(
                     detachEffectRecursion,
@@ -255,10 +268,9 @@ function getInstance<
               })(),
             )
             .then(() => {
-              debug?.subscription.notify({
-                type: !state.error ? 'detachSuccess' : 'detachError',
-                model: { name, params, state },
-                effect: { name: k as string, args },
+              debugEmitEvent(!state.error ? 'detachSuccess' : 'detachError', {
+                name: k as string,
+                args,
               });
             });
         }
@@ -295,20 +307,11 @@ function getInstance<
       const unsubscribe = subscribe(listener);
 
       if (usingCounter++ === 0) {
-        if (live) {
-          if (clearDataTimeoutId) {
-            clearTimeout(clearDataTimeoutId);
-          }
-          try {
-            debug?.subscription.notify({
-              type: 'live',
-              model: { name, params, state },
-            });
-            die = live(effects, params, app, { subscribe, getState });
-          } catch (error) {
-            console.error(error);
-          }
+        if (clearDataTimeoutId) {
+          clearTimeout(clearDataTimeoutId);
         }
+        debugEmitEvent('live');
+        die = live(effects, params, app, { subscribe, getState });
       }
 
       return () => {
@@ -318,10 +321,7 @@ function getInstance<
           if (die) {
             die({ clearData });
           }
-          debug?.subscription.notify({
-            type: 'die',
-            model: { name, params, state },
-          });
+          debugEmitEvent('die');
         }
       };
     },
@@ -331,11 +331,7 @@ function getInstance<
     _normalize(data: Data) {
       queueEffect(() => {
         processEffect(() => data);
-
-        debug?.subscription.notify({
-          type: 'normalize',
-          model: { name, params, state },
-        });
+        debugEmitEvent('normalize');
       });
     },
 

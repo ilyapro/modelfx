@@ -1,3 +1,5 @@
+import { safe } from './safe';
+
 export type Listener<Args extends any[]> = (...args: Args) => void;
 
 type Node<Args extends any[]> = {
@@ -16,14 +18,14 @@ export function createSubscription<Args extends any[]>(): Subscription<Args> {
   let last: Node<Args> | undefined;
 
   return {
-    notify(...args) {
+    notify: safe((...args) => {
       let curr = first;
 
       while (curr) {
         curr.fn(...args);
         curr = curr.next;
       }
-    },
+    }),
 
     subscribe(fn) {
       const node: Node<Args> = { fn };
