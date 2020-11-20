@@ -296,6 +296,7 @@ function getInstance<
         return;
       }
       delete instances[key];
+      debugEmitEvent('clearData');
     });
   };
   let die: ModelDie | undefined | void;

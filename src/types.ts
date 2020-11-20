@@ -14,6 +14,7 @@ export type ModelDebugger = {
 export type ModelDebugEvent =
   | GetDebugEvent<'live'>
   | GetDebugEvent<'die'>
+  | GetDebugEvent<'clearData'>
   | GetDebugEvent<'effectStart', { effect: ModelDebugEventEffect }>
   | GetDebugEvent<'effectSuccess', { effect: ModelDebugEventEffect }>
   | GetDebugEvent<'effectError', { effect: ModelDebugEventEffect }>
