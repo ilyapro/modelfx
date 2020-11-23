@@ -258,7 +258,7 @@ function getInstance<
         if (detachedEffects.length) {
           promise = Promise.resolve(promise)
             .then(() =>
-              (async function detachEffectRecursion(): Promise<void> {
+              (function detachEffectRecursion(): Promise<void> | void {
                 const effect = detachedEffects.shift();
                 if (effect) {
                   return Promise.resolve(processEffect(effect)).then(
@@ -275,7 +275,9 @@ function getInstance<
             });
         }
 
-        isInEffect = false;
+        Promise.resolve(promise).then(() => {
+          isInEffect = false;
+        });
 
         return promise;
       });
