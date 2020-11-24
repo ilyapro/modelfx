@@ -164,6 +164,50 @@ function getInstance<
     notify();
   };
 
+  const getIsPending = () => state.isPending && !isEffectsQueueEmpty();
+
+  const setData = (data: Data | undefined) => {
+    const isPending = getIsPending();
+    if (isPending === state.isPending && data === state.data) {
+      return;
+    }
+    setState({ isPending, data });
+  };
+
+  const setError = (error: any) => {
+    setState({
+      isPending: getIsPending(),
+      data: state.data,
+      error,
+    });
+  };
+
+  const setPending = () => {
+    if (state.isPending) {
+      return;
+    }
+    setState({
+      data: state.data,
+      error: state.error,
+      isPending: true,
+    });
+  };
+
+  const processEffect = (effect: ModelEffect<Data>): Promise<void> | void => {
+    try {
+      const result = effect();
+
+      if (result instanceof Promise) {
+        setPending();
+        return result.then(setData).catch(setError);
+      } else {
+        setData(result);
+      }
+    } catch (error) {
+      setError(error);
+    }
+  };
+
   const debugEmitEvent = debug
     ? (type: ModelDebugEvent['type'], effect?: ModelDebugEventEffect) => {
         const event: any = {
@@ -177,46 +221,14 @@ function getInstance<
       }
     : () => {};
 
+  const normalize = <D>(s: ModelSelection<any, any, D, App, any>, d: D) =>
+    s(context)._normalize(d);
+
   const {
     add: queueEffect,
     isEmpty: isEffectsQueueEmpty,
     willReady: willEffectsReady,
   } = createQueue();
-
-  const processEffect = (effect: ModelEffect<Data>): Promise<void> | void => {
-    const { isPending, data, error } = state;
-    try {
-      const result = effect();
-
-      if (result instanceof Promise) {
-        if (!isPending) {
-          setState({ isPending: true, data, error });
-        }
-        return result.then((newData) => {
-          if (newData !== data || isEffectsQueueEmpty()) {
-            setState({
-              isPending: !isEffectsQueueEmpty(),
-              data: newData,
-            });
-          }
-        });
-      } else if (result !== data || (isPending && isEffectsQueueEmpty())) {
-        setState({
-          isPending: isPending && !isEffectsQueueEmpty(),
-          data: result,
-        });
-      }
-    } catch (error) {
-      setState({
-        isPending: !isEffectsQueueEmpty(),
-        data,
-        error,
-      });
-    }
-  };
-
-  const normalize = <D>(s: ModelSelection<any, any, D, App, any>, d: D) =>
-    s(context)._normalize(d);
 
   const effects = effectKeys.reduce((acc, k: keyof Effects) => {
     acc[k] = (...args) => {
