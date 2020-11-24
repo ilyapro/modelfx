@@ -313,7 +313,7 @@ function getInstance<
       debugEmitEvent('clearData');
     });
   };
-  let die: ModelDie | undefined | void;
+  let die: ModelDie;
 
   return (instances[key] = {
     getState,
@@ -326,16 +326,14 @@ function getInstance<
           clearTimeout(clearDataTimeoutId);
         }
         debugEmitEvent('live');
-        die = live(effects, params, app, { subscribe, getState });
+        die = safe(live(effects, params, app, { subscribe, getState }));
       }
 
       return () => {
         unsubscribe();
 
         if (--usingCounter === 0) {
-          if (die) {
-            die({ clearData });
-          }
+          die({ clearData });
           debugEmitEvent('die');
         }
       };

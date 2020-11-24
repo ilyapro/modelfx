@@ -1,10 +1,13 @@
-export function safe<A extends any[], R>(fn: (...args: A) => R): typeof fn {
-  return (...args) => {
-    try {
-      return fn(...args);
-    } catch (error) {
-      console.error(error);
-    }
-    return undefined as any;
-  };
+export function safe<A extends any[], R>(
+  fn: ((...args: A) => R | void) | void,
+): (...args: A) => R | void {
+  return fn
+    ? (...args) => {
+        try {
+          return fn(...args);
+        } catch (error) {
+          console.log(error);
+        }
+      }
+    : () => {};
 }
