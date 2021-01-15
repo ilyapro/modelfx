@@ -1,6 +1,6 @@
 # modelfx
 
-JS(TS) lightweight library for decomposited dataflow control. Can act as M in MVC pattern.
+JS(TS) library for decomposited dataflow control in web applications. Can act as M in MVC pattern.
 Provides the creation of models that are shared components of storage and effects of some data.
 
 ```
