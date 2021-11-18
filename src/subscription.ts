@@ -1,4 +1,4 @@
-import { safe } from './safe';
+import { safe } from "./safe";
 
 export type Listener<Args extends any[]> = (...args: Args) => void;
 
@@ -30,27 +30,24 @@ export function createSubscription<Args extends any[]>(): Subscription<Args> {
     subscribe(fn) {
       const node: Node<Args> = { fn };
 
-      if (!first || !last) {
-        first = node;
-        last = node;
-      } else {
+      if (last) {
         last.next = node;
         node.prev = last;
-        last = node;
+      } else {
+        first = node;
       }
+      last = node;
 
       return () => {
-        if (node.prev && node.next) {
+        if (node.prev) {
           node.prev.next = node.next;
-        } else if (node.prev) {
-          last = node.prev;
-          last.next = undefined;
-        } else if (node.next) {
-          first = node.next;
-          first.prev = undefined;
         } else {
-          first = undefined;
-          last = undefined;
+          first = node.next;
+        }
+        if (node.next) {
+          node.next.prev = node.prev;
+        } else {
+          last = node.prev;
         }
       };
     },
